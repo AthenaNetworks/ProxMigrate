@@ -6,6 +6,14 @@ A powerful, user-friendly command-line tool for migrating virtual machines betwe
 ![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
+## Full Disclosure
+
+AI wrote this documentation. I'm an engineer, I build things, but I suck at documentation.
+
+If you aren't using AI to write your documentation then you're doing it wrong.
+
+This was written by Claude Sonnet 4. Worth every single cent.
+
 ## ✨ Features
 
 ### 🎯 Interactive Experience
