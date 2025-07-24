@@ -51,11 +51,6 @@ build_binary() {
         # Copy binary to platform directory
         cp "${BUILD_DIR}/${output_name}" "${platform_dir}/proxmigrate${ext}"
         
-        # Copy config files and SSH key to each platform directory
-        cp config.json "${platform_dir}/"
-        cp proxmigrate_key "${platform_dir}/"
-        cp proxmigrate_key.pub "${platform_dir}/"
-        
         # Create README for each platform
         cat > "${platform_dir}/README.md" << EOF
 # Proxmigrate ${VERSION} - ${os}/${arch}
