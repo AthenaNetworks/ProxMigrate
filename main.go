@@ -1363,7 +1363,7 @@ func listConfiguredHosts(config *Config) {
 
 // runConnectivityTests runs connectivity tests for source and target
 func runConnectivityTests(config *Config, sourceName, targetName string) {
-	fmt.Println("Running connectivity tests...\n")
+	fmt.Println("Running connectivity tests...")
 
 	// Get source and target configurations
 	sourceConfig, exists := config.Sources[sourceName]
