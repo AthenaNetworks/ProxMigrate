@@ -531,62 +531,6 @@ golangci-lint run
 go fmt ./...
 ```
 
-## 📚 API Reference
-
-### Configuration Schema
-
-```json
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "type": "object",
-  "properties": {
-    "sources": {
-      "type": "object",
-      "patternProperties": {
-        ".*": {
-          "type": "object",
-          "properties": {
-            "host": {"type": "string", "format": "uri"},
-            "token_id": {"type": "string"},
-            "token_secret": {"type": "string"},
-            "backup_storage": {"type": "string", "default": "local"},
-            "insecure": {"type": "boolean", "default": false}
-          },
-          "required": ["host", "token_id", "token_secret"]
-        }
-      }
-    },
-    "targets": {
-      "type": "object",
-      "patternProperties": {
-        ".*": {
-          "type": "object",
-          "properties": {
-            "host": {"type": "string", "format": "uri"},
-            "token_id": {"type": "string"},
-            "token_secret": {"type": "string"},
-            "node": {"type": "string"},
-            "storage": {"type": "string"},
-            "backup_storage": {"type": "string", "default": "local"},
-            "insecure": {"type": "boolean", "default": false}
-          },
-          "required": ["host", "token_id", "token_secret", "node", "storage"]
-        }
-      }
-    },
-    "ssh": {
-      "type": "object",
-      "properties": {
-        "user": {"type": "string", "default": "root"},
-        "key_path": {"type": "string"}
-      },
-      "required": ["key_path"]
-    }
-  },
-  "required": ["sources", "targets", "ssh"]
-}
-```
-
 ## 🤝 Contributing
 
 We welcome contributions! Please see our contributing guidelines:
