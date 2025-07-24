@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manifoldco/promptui"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -275,8 +276,33 @@ func copyFileDirectly(sourceClient *ssh.Client, sourcePath string, targetHost, t
 	}
 
 	// Build SCP command to run on source server that copies directly to target
-	scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -i '%s' '%s' '%s@%s:%s'",
+	scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i '%s' '%s' '%s@%s:%s' 2>&1",
 		sshKeyPath,
+		sourcePath,
+		sshUser,
+		targetHost,
+		targetPath)
+
+	// First, we need to copy our SSH key to the source server temporarily
+	// since the SCP command runs ON the source server
+	tempKeyPath := "/tmp/proxmigrate_temp_key"
+
+	// Read local SSH key content
+	keyContent, err := os.ReadFile(sshKeyPath)
+	if err != nil {
+		return fmt.Errorf("failed to read SSH key file %s: %w", sshKeyPath, err)
+	}
+
+	// Copy the key to source server
+	copyKeyCmd := fmt.Sprintf("cat > %s << 'EOF'\n%sEOF\nchmod 600 %s", tempKeyPath, string(keyContent), tempKeyPath)
+	_, err = executeSSHCommand(sourceClient, copyKeyCmd)
+	if err != nil {
+		return fmt.Errorf("failed to copy SSH key to source server: %w", err)
+	}
+
+	// Update SCP command to use the temporary key on source server
+	scpCmd = fmt.Sprintf("scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i '%s' '%s' '%s@%s:%s' 2>&1",
+		tempKeyPath,
 		sourcePath,
 		sshUser,
 		targetHost,
@@ -284,6 +310,10 @@ func copyFileDirectly(sourceClient *ssh.Client, sourcePath string, targetHost, t
 
 	// Execute the SCP command on the source server with streaming output
 	output, err := executeSSHCommandWithStreaming(sourceClient, scpCmd)
+
+	// Clean up temporary key file on source server
+	cleanupCmd := fmt.Sprintf("rm -f %s", tempKeyPath)
+	executeSSHCommand(sourceClient, cleanupCmd) // Ignore errors for cleanup
 	if err != nil {
 		return fmt.Errorf("direct file transfer failed: %w, output: %s", err, output)
 	}
@@ -407,12 +437,12 @@ func getVMConfig(ctx context.Context, host, tokenID, tokenSecret string, vmID in
 		}
 
 		if resp.StatusCode == http.StatusNotFound {
-			fmt.Println("404 fuck off, next!")
+			fmt.Println("Hmmm, nope not that one - next!")
 			continue
 		}
 
 		if resp.StatusCode == http.StatusInternalServerError {
-			fmt.Println("500 fuck off, next!")
+			fmt.Println("Hmmm, nope not that one - next!")
 			continue
 		}
 
@@ -439,7 +469,7 @@ func getVMConfig(ctx context.Context, host, tokenID, tokenSecret string, vmID in
 			vmConfig = configResponse.Data
 			vmFound = true
 			foundNodeName = nodeName
-			fmt.Println("Found the fucker!")
+			fmt.Println("Found it!")
 			break
 		}
 		resp.Body.Close()
@@ -847,7 +877,7 @@ func getFilePathOnDisk(_ /* ctx */ context.Context, host, _ /* tokenID */, _ /* 
 
 // transferFileToTarget transfers the VM backup file from source to target server using SSH
 // Returns targetFilePath, sourceFilePath, error
-func transferFileToTarget(_ /* ctx */ context.Context, sourceHost, _ /* sourceTokenID */, _ /* sourceTokenSecret */ string, _ /* sourceInsecure */ bool, _ /* sourceNode */ string, sourceVMID int, targetHost, _ /* targetNode */, sshUser, sshKeyPath string) (string, string, error) {
+func transferFileToTarget(sourceHost string, sourceVMID int, targetHost, sshUser, sshKeyPath, sourceBackupStorage string) (string, string, error) {
 
 	// Make sure host doesn't end with a slash
 	sourceHost = strings.TrimSuffix(sourceHost, "/")
@@ -877,9 +907,17 @@ func transferFileToTarget(_ /* ctx */ context.Context, sourceHost, _ /* sourceTo
 	// Default to QEMU VM type
 	vmType := "qemu"
 
+	// Determine the correct storage path based on backup storage type
+	var sourceStoragePath string
+	if sourceBackupStorage == "local" {
+		sourceStoragePath = "/var/lib/vz/dump"
+	} else {
+		sourceStoragePath = fmt.Sprintf("/mnt/pve/%s/dump", sourceBackupStorage)
+	}
+
 	// Use SSH to find the most recent backup file for this VM
 	backupPattern := fmt.Sprintf("vzdump-%s-%d-*.vma.*", vmType, sourceVMID)
-	findCmd := fmt.Sprintf("ls -t /var/lib/vz/dump/%s | head -1", backupPattern)
+	findCmd := fmt.Sprintf("ls -t %s/%s | head -1", sourceStoragePath, backupPattern)
 
 	// Execute the command to find the backup file
 	output, err := executeSSHCommand(sourceClient, findCmd)
@@ -902,15 +940,31 @@ func transferFileToTarget(_ /* ctx */ context.Context, sourceHost, _ /* sourceTo
 		backupFilename = filepath.Base(backupFilename)
 	} else {
 		// It's just a filename, so add the path
-		sourceFilePath = filepath.Join("/var/lib/vz/dump", backupFilename)
+		sourceFilePath = filepath.Join(sourceStoragePath, backupFilename)
 	}
 
 	fmt.Println("OK")
 
-	// Construct the target path (in /var/lib/vz/dump/ which is standard for Proxmox)
-	targetFilePath := fmt.Sprintf("/var/lib/vz/dump/%s", backupFilename)
+	// Construct the target path - assume target also uses migration storage for now
+	// TODO: Make target backup storage configurable
+	targetFilePath := fmt.Sprintf("/mnt/pve/migration/dump/%s", backupFilename)
 
 	fmt.Println("Starting file transfer...")
+
+	// First, ensure the target directory exists
+	targetClient, err := createSSHClient(targetHostname, sshUser, sshKeyPath)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to connect to target server: %w", err)
+	}
+	defer targetClient.Close()
+
+	// Create target directory if it doesn't exist
+	targetDir := filepath.Dir(targetFilePath)
+	mkdirCmd := fmt.Sprintf("mkdir -p '%s'", targetDir)
+	_, err = executeSSHCommand(targetClient, mkdirCmd)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create target directory %s: %w", targetDir, err)
+	}
 
 	// Transfer the file directly from source to target server (no local routing)
 	err = copyFileDirectly(sourceClient, sourceFilePath, targetHostname, targetFilePath, sshUser, sshKeyPath)
@@ -1387,6 +1441,267 @@ func runConnectivityTests(config *Config, sourceName, targetName string) {
 	}
 }
 
+// promptForSource prompts the user to select a source server from available options
+func promptForSource(config *Config) (string, error) {
+	if len(config.Sources) == 0 {
+		return "", fmt.Errorf("no source servers configured")
+	}
+
+	// Create sorted list of source names
+	sources := make([]string, 0, len(config.Sources))
+	for name := range config.Sources {
+		sources = append(sources, name)
+	}
+	sort.Strings(sources)
+
+	prompt := promptui.Select{
+		Label: "Select source server",
+		Items: sources,
+		Size:  10,
+	}
+
+	_, result, err := prompt.Run()
+	if err != nil {
+		return "", fmt.Errorf("source selection cancelled: %w", err)
+	}
+
+	return result, nil
+}
+
+// promptForTarget prompts the user to select a target server from available options
+func promptForTarget(config *Config) (string, error) {
+	if len(config.Targets) == 0 {
+		return "", fmt.Errorf("no target servers configured")
+	}
+
+	// Create sorted list of target names
+	targets := make([]string, 0, len(config.Targets))
+	for name := range config.Targets {
+		targets = append(targets, name)
+	}
+	sort.Strings(targets)
+
+	prompt := promptui.Select{
+		Label: "Select target server",
+		Items: targets,
+		Size:  10,
+	}
+
+	_, result, err := prompt.Run()
+	if err != nil {
+		return "", fmt.Errorf("target selection cancelled: %w", err)
+	}
+
+	return result, nil
+}
+
+// VMInfo represents a VM with its details for display
+type VMInfo struct {
+	VMID   int    `json:"vmid"`
+	Name   string `json:"name"`
+	Status string `json:"status"`
+	Type   string `json:"type"`
+	Node   string `json:"node"`
+}
+
+// String returns a formatted string representation of the VM for display in promptui
+func (vm VMInfo) String() string {
+	statusIcon := "⚪"
+	switch vm.Status {
+	case "running":
+		statusIcon = "🟢"
+	case "stopped":
+		statusIcon = "🔴"
+	case "paused":
+		statusIcon = "🟡"
+	}
+
+	name := vm.Name
+	if name == "" {
+		name = "(unnamed)"
+	}
+
+	return fmt.Sprintf("%s VM %d: %s [%s] on %s", statusIcon, vm.VMID, name, vm.Status, vm.Node)
+}
+
+// getVMList fetches all VMs from a specific Proxmox node
+func getVMList(ctx context.Context, host, tokenID, tokenSecret string, insecure bool, nodeName string) ([]VMInfo, error) {
+	// Make sure host doesn't end with a slash
+	host = strings.TrimSuffix(host, "/")
+
+	// Create custom HTTP client with TLS configuration
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: insecure,
+	}
+	transport := &http.Transport{
+		TLSClientConfig: tlsConfig,
+	}
+	httpClient := &http.Client{
+		Timeout:   15 * time.Second,
+		Transport: transport,
+	}
+
+	var allVMs []VMInfo
+
+	// Get VMs from the specific node only (both QEMU and LXC)
+	node := nodeName
+
+	// Get QEMU VMs
+	qemuURL := fmt.Sprintf("%s/api2/json/nodes/%s/qemu", host, node)
+	req, err := http.NewRequestWithContext(ctx, "GET", qemuURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create QEMU request: %w", err)
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", tokenID, tokenSecret))
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query QEMU VMs: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err == nil {
+			var qemuResponse struct {
+				Data []struct {
+					VMID   int    `json:"vmid"`
+					Name   string `json:"name"`
+					Status string `json:"status"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(body, &qemuResponse) == nil {
+				for _, vm := range qemuResponse.Data {
+					allVMs = append(allVMs, VMInfo{
+						VMID:   vm.VMID,
+						Name:   vm.Name,
+						Status: vm.Status,
+						Type:   "qemu",
+						Node:   node,
+					})
+				}
+			}
+		}
+	} else {
+		resp.Body.Close()
+	}
+
+	// Get LXC containers
+	lxcURL := fmt.Sprintf("%s/api2/json/nodes/%s/lxc", host, node)
+	req, err = http.NewRequestWithContext(ctx, "GET", lxcURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create LXC request: %w", err)
+	}
+	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", tokenID, tokenSecret))
+
+	resp, err = httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query LXC containers: %w", err)
+	}
+
+	if resp.StatusCode == http.StatusOK {
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err == nil {
+			var lxcResponse struct {
+				Data []struct {
+					VMID   int    `json:"vmid"`
+					Name   string `json:"name"`
+					Status string `json:"status"`
+				} `json:"data"`
+			}
+			if json.Unmarshal(body, &lxcResponse) == nil {
+				for _, vm := range lxcResponse.Data {
+					allVMs = append(allVMs, VMInfo{
+						VMID:   vm.VMID,
+						Name:   vm.Name,
+						Status: vm.Status,
+						Type:   "lxc",
+						Node:   node,
+					})
+				}
+			}
+		}
+	} else {
+		resp.Body.Close()
+	}
+
+	// Sort VMs by VMID for consistent display
+	sort.Slice(allVMs, func(i, j int) bool {
+		return allVMs[i].VMID < allVMs[j].VMID
+	})
+
+	return allVMs, nil
+}
+
+// promptForVM prompts the user to select a VM from the source server
+func promptForVM(ctx context.Context, sourceConfig ServerConfig, nodeName string) (int, error) {
+	fmt.Printf("Fetching VM list from source node '%s'... ", nodeName)
+	vms, err := getVMList(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, nodeName)
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch VM list: %w", err)
+	}
+	fmt.Println("OK")
+
+	if len(vms) == 0 {
+		return 0, fmt.Errorf("no VMs found on source server")
+	}
+
+	// Create templates for display
+	templates := &promptui.SelectTemplates{
+		Label:    "{{ . }}?",
+		Active:   "▶ {{ . | cyan }}",
+		Inactive: "  {{ . }}",
+		Selected: "✓ {{ . | green }}",
+	}
+
+	prompt := promptui.Select{
+		Label:     "Select VM to migrate",
+		Items:     vms,
+		Templates: templates,
+		Size:      15,
+		Searcher: func(input string, index int) bool {
+			vm := vms[index]
+			// Search by VM ID, name, or status
+			return strings.Contains(strings.ToLower(fmt.Sprintf("%d %s %s", vm.VMID, vm.Name, vm.Status)), strings.ToLower(input))
+		},
+	}
+
+	index, _, err := prompt.Run()
+	if err != nil {
+		return 0, fmt.Errorf("VM selection cancelled: %w", err)
+	}
+
+	return vms[index].VMID, nil
+}
+
+// promptForVMID prompts the user to enter a VM ID with validation (fallback method)
+func promptForVMID() (int, error) {
+	validate := func(input string) error {
+		vmID, err := strconv.Atoi(input)
+		if err != nil {
+			return fmt.Errorf("invalid VM ID: must be a number")
+		}
+		if vmID <= 0 {
+			return fmt.Errorf("invalid VM ID: must be greater than 0")
+		}
+		return nil
+	}
+
+	prompt := promptui.Prompt{
+		Label:    "Enter VM ID to migrate",
+		Validate: validate,
+	}
+
+	result, err := prompt.Run()
+	if err != nil {
+		return 0, fmt.Errorf("VM ID input cancelled: %w", err)
+	}
+
+	vmID, _ := strconv.Atoi(result) // We know this is valid due to validation
+	return vmID, nil
+}
+
 func main() {
 	flag.Parse() // Parse the command-line flags
 
@@ -1509,18 +1824,75 @@ func main() {
 		return // This won't be reached due to os.Exit in runConnectivityTests
 	}
 
-	// Validate required flags for migration
-	if *sourceName == "" || *targetName == "" || *vmID == 0 {
-		fmt.Fprintln(os.Stderr, "Error: Missing required flags. --source, --target, and --vmid are mandatory.")
-		fmt.Fprintln(os.Stderr, "Usage: proxmigrate --source=prod --target=backup --vmid=109")
-		fmt.Fprintln(os.Stderr, "       proxmigrate --test --source=prod --target=backup")
-		os.Exit(1)
+	// Check if we need to prompt for missing values
+	needInteractive := *sourceName == "" || *targetName == "" || *vmID == 0
+
+	if needInteractive {
+		fmt.Println("\n🚀 Interactive Migration Setup")
+		fmt.Println("Please provide the missing migration parameters:")
+		fmt.Println()
+	}
+
+	// Prompt for source if not provided
+	var selectedSource string
+	if *sourceName == "" {
+		source, err := promptForSource(config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error selecting source: %v\n", err)
+			os.Exit(1)
+		}
+		selectedSource = source
+	} else {
+		selectedSource = *sourceName
+	}
+
+	// Prompt for target if not provided
+	var selectedTarget string
+	if *targetName == "" {
+		target, err := promptForTarget(config)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error selecting target: %v\n", err)
+			os.Exit(1)
+		}
+		selectedTarget = target
+	} else {
+		selectedTarget = *targetName
+	}
+
+	// Prompt for VM ID if not provided
+	var selectedVMID int
+	if *vmID == 0 {
+		// Get source configuration first to fetch VM list
+		sourceConfig, exists := config.Sources[selectedSource]
+		if !exists {
+			fmt.Fprintf(os.Stderr, "Error: Source '%s' not found in configuration\n", selectedSource)
+			os.Exit(1)
+		}
+
+		// Try to fetch VM list from source server, fallback to manual entry if it fails
+		vmid, err := promptForVM(ctx, sourceConfig, selectedSource)
+		if err != nil {
+			fmt.Printf("Warning: Could not fetch VM list (%v)\n", err)
+			fmt.Println("Falling back to manual VM ID entry...")
+			vmid, err = promptForVMID()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error getting VM ID: %v\n", err)
+				os.Exit(1)
+			}
+		}
+		selectedVMID = vmid
+	} else {
+		selectedVMID = *vmID
+	}
+
+	if needInteractive {
+		fmt.Printf("\n✅ Migration configured: %s → %s (VM %d)\n\n", selectedSource, selectedTarget, selectedVMID)
 	}
 
 	// Get source configuration
-	sourceConfig, exists := config.Sources[*sourceName]
+	sourceConfig, exists := config.Sources[selectedSource]
 	if !exists {
-		fmt.Fprintf(os.Stderr, "Error: Source '%s' not found in configuration\n", *sourceName)
+		fmt.Fprintf(os.Stderr, "Error: Source '%s' not found in configuration\n", selectedSource)
 		fmt.Fprintln(os.Stderr, "Available sources:")
 		for name := range config.Sources {
 			fmt.Fprintf(os.Stderr, "  - %s\n", name)
@@ -1529,9 +1901,9 @@ func main() {
 	}
 
 	// Get target configuration
-	targetConfig, exists := config.Targets[*targetName]
+	targetConfig, exists := config.Targets[selectedTarget]
 	if !exists {
-		fmt.Fprintf(os.Stderr, "Error: Target '%s' not found in configuration\n", *targetName)
+		fmt.Fprintf(os.Stderr, "Error: Target '%s' not found in configuration\n", selectedTarget)
 		fmt.Fprintln(os.Stderr, "Available targets:")
 		for name := range config.Targets {
 			fmt.Fprintf(os.Stderr, "  - %s\n", name)
@@ -1566,14 +1938,14 @@ func main() {
 	fmt.Println("OK")
 
 	fmt.Println("Source Host:", sourceConfig.Host)
-	fmt.Println("Source VM ID:", *vmID)
+	fmt.Println("Source VM ID:", selectedVMID)
 	fmt.Println("Target Host:", targetConfig.Host)
 	fmt.Println("Target Node:", targetConfig.Node)
 	fmt.Println("Target Storage:", targetConfig.Storage)
 
 	// Step 1: Connect to source Proxmox and get VM config
 	fmt.Print("\nStep 1: Fetching VM configuration from source...\n")
-	vmConfig, sourceNodeName, err := getVMConfig(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, *vmID, sourceConfig.Insecure)
+	vmConfig, sourceNodeName, err := getVMConfig(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, selectedVMID, sourceConfig.Insecure)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error fetching source VM config: %v\n", err)
 		os.Exit(1)
@@ -1589,12 +1961,12 @@ func main() {
 	}
 
 	if sourceNodeName == "" {
-		fmt.Fprintf(os.Stderr, "Error: Could not determine which node VM %d is on\n", *vmID)
+		fmt.Fprintf(os.Stderr, "Error: Could not determine which node VM %d is on\n", selectedVMID)
 		os.Exit(1)
 	}
 
 	// Initiate the export
-	taskID, err := exportVM(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, sourceNodeName, *vmID, vmType, sourceConfig.BackupStorage)
+	taskID, err := exportVM(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, sourceNodeName, selectedVMID, vmType, sourceConfig.BackupStorage)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error starting VM export: %v\n", err)
 		os.Exit(1)
@@ -1611,7 +1983,7 @@ func main() {
 	fmt.Println("\nStep 3: Transferring VM backup to target server...")
 
 	// Transfer the exported file to the target server
-	targetFilePath, sourceFilePath, err := transferFileToTarget(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, sourceNodeName, *vmID, targetConfig.Host, targetConfig.Node, config.SSH.User, config.SSH.KeyPath)
+	targetFilePath, sourceFilePath, err := transferFileToTarget(sourceConfig.Host, selectedVMID, targetConfig.Host, config.SSH.User, config.SSH.KeyPath, sourceConfig.BackupStorage)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error transferring file: %v\n", err)
 		os.Exit(1)
@@ -1624,7 +1996,7 @@ func main() {
 
 	// Import the VM on the target node using direct HTTP request
 	var importTaskID string
-	importTaskID, err = restoreBackup(ctx, targetConfig.Host, targetConfig.Node, *vmID, targetConfig.Storage, targetFilePath, config.SSH.User, config.SSH.KeyPath)
+	importTaskID, err = restoreBackup(ctx, targetConfig.Host, targetConfig.Node, selectedVMID, targetConfig.Storage, targetFilePath, config.SSH.User, config.SSH.KeyPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initiating VM import: %v (%s)\n", err, importTaskID)
 		os.Exit(1)
