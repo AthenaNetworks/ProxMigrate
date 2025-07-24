@@ -515,22 +515,6 @@ Generates:
 - `proxmigrate-darwin-arm64.tar.gz`
 - `proxmigrate-windows-amd64.zip`
 
-### Development Setup
-
-```bash
-# Install development dependencies
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-
-# Run tests
-go test ./...
-
-# Run linter
-golangci-lint run
-
-# Format code
-go fmt ./...
-```
-
 ## 🤝 Contributing
 
 We welcome contributions! Please see our contributing guidelines:
