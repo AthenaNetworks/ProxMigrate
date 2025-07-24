@@ -275,14 +275,6 @@ func copyFileDirectly(sourceClient *ssh.Client, sourcePath string, targetHost, t
 		fmt.Printf("Transferring file (%s bytes = %s) directly from source to target...\n", fileSizeStr, formatBytes(fileSizeBytes))
 	}
 
-	// Build SCP command to run on source server that copies directly to target
-	scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i '%s' '%s' '%s@%s:%s' 2>&1",
-		sshKeyPath,
-		sourcePath,
-		sshUser,
-		targetHost,
-		targetPath)
-
 	// First, we need to copy our SSH key to the source server temporarily
 	// since the SCP command runs ON the source server
 	tempKeyPath := "/tmp/proxmigrate_temp_key"
@@ -300,8 +292,8 @@ func copyFileDirectly(sourceClient *ssh.Client, sourcePath string, targetHost, t
 		return fmt.Errorf("failed to copy SSH key to source server: %w", err)
 	}
 
-	// Update SCP command to use the temporary key on source server
-	scpCmd = fmt.Sprintf("scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i '%s' '%s' '%s@%s:%s' 2>&1",
+	// Build SCP command to use the temporary key on source server
+	scpCmd := fmt.Sprintf("scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -i '%s' '%s' '%s@%s:%s' 2>&1",
 		tempKeyPath,
 		sourcePath,
 		sshUser,
