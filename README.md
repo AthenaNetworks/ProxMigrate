@@ -57,34 +57,43 @@ cd proxmigrate
 go build -o proxmigrate
 ```
 
-### 2. Setup SSH Keys
+### 2. Configure Environments
 
-The tool includes a dedicated SSH key pair (`proxmigrate_key` and `proxmigrate_key.pub`). Deploy the public key to your Proxmox servers:
-
-```bash
-# Use the included setup script (recommended)
-./setup-proxmox.sh
-
-# Or manually copy the key to each server
-ssh-copy-id -i proxmigrate_key.pub root@your-proxmox-server
-```
-
-### 3. Configure Environments
-
-Copy the example configuration and customize it:
+First, copy the example configuration and customize it (the setup script needs this):
 
 ```bash
 cp config.json.example config.json
 # Edit config.json with your server details
 ```
 
-### 4. Test Connectivity
+### 3. Setup SSH Keys and Deploy
+
+**Option A: Use the automated setup script (recommended)**
+
+The script will generate SSH keys if they don't exist AND deploy them to all servers in your config:
+
+```bash
+./setup-proxmox.sh
+```
+
+**Option B: Manual setup**
+
+```bash
+# Generate SSH key pair manually
+ssh-keygen -t rsa -b 4096 -f proxmigrate_key -N ""
+
+# Then copy to each server manually
+ssh-copy-id -i proxmigrate_key.pub root@your-proxmox-server
+# Repeat for all servers in your configuration
+```
+
+### 5. Test Connectivity
 
 ```bash
 ./proxmigrate --test --source=prod --target=backup
 ```
 
-### 5. Start Migrating!
+### 6. Start Migrating!
 
 ```bash
 # Interactive mode (recommended for new users)
