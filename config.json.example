@@ -1,0 +1,138 @@
+{
+  "sources": {
+    "ara-asp-pve15": {
+      "host": "https://192.168.228.35:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pve16": {
+      "host": "https://192.168.228.36:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pve17": {
+      "host": "https://192.168.228.37:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pve18": {
+      "host": "https://192.168.228.38:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pxnode1": {
+      "host": "https://192.168.228.50:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pxnode2": {
+      "host": "https://192.168.228.51:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pxnode3": {
+      "host": "https://192.168.228.52:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    },
+    "ara-asp-pxnode4": {
+      "host": "https://192.168.228.53:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "insecure": true
+    }
+  },
+  "targets": {
+    "ara-asp-pve15": {
+      "host": "https://192.168.228.35:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pve15",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pve16": {
+      "host": "https://192.168.228.36:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pve16",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pve17": {
+      "host": "https://192.168.228.37:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pve17",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pve18": {
+      "host": "https://192.168.228.38:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pve18",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pxnode1": {
+      "host": "https://192.168.228.50:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pxnode1",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pxnode2": {
+      "host": "https://192.168.228.51:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pxnode2",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pxnode3": {
+      "host": "https://192.168.228.52:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pxnode3",
+      "storage": "tier1",
+      "insecure": true
+    },
+    "ara-asp-pxnode4": {
+      "host": "https://192.168.228.53:8006/",
+      "user": "root@pam",
+      "token_id": "root@pam!migration-tool",
+      "token_secret": "YOUR_TOKEN_SECRET_HERE",
+      "node": "ara-asp-pxnode4",
+      "storage": "tier1",
+      "insecure": true
+    }
+  },
+  "ssh": {
+    "user": "root",
+    "key_path": "./proxmigrate_key"
+  }
+}

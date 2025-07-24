@@ -1,0 +1,23 @@
+{
+  "source": {
+    "host": "",
+    "user": "root@pam",
+    "token_id": "",
+    "token_secret": "",
+    "vmid": 0
+  },
+  "target": {
+    "host": "",
+    "user": "root@pam",
+    "token_id": "",
+    "token_secret": "",
+    "node": "",
+    "storage": "",
+    "vmid": 0,
+    "auto_assign_vmid": false
+  },
+  "ssh": {
+    "user": "root",
+    "key_path": ""
+  }
+}
