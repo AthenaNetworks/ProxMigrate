@@ -5,7 +5,7 @@ REM Proxmigrate Cross-Platform Build Script for Windows
 REM Builds binaries for macOS, Linux, and Windows
 
 echo.
-echo 🚀 Proxmigrate Cross-Platform Build Script
+echo Proxmigrate Cross-Platform Build Script
 echo.
 
 REM Get version from git tag or use default
@@ -22,7 +22,7 @@ echo Build Time: %BUILD_TIME%
 echo.
 
 REM Clean previous builds
-echo 🧹 Cleaning previous builds...
+echo Cleaning previous builds...
 if exist %BUILD_DIR% rmdir /s /q %BUILD_DIR%
 mkdir %BUILD_DIR%
 
@@ -34,10 +34,10 @@ if errorlevel 1 (
 )
 
 REM Clean up dependencies
-echo 🧹 Cleaning up Go modules...
+echo Cleaning up Go modules...
 go mod tidy
 
-echo 🔨 Starting cross-platform builds...
+echo Starting cross-platform builds...
 echo.
 
 REM Build function simulation using labels
@@ -48,16 +48,16 @@ call :build_binary linux arm64 ""
 call :build_binary windows amd64 ".exe"
 
 echo.
-echo 🎉 Build completed successfully!
-echo 📁 Build artifacts are in the %BUILD_DIR%/ directory
+echo Build completed successfully!
+echo Build artifacts are in the %BUILD_DIR%\ directory
 echo.
 
 REM Show build summary
-echo 📊 Build Summary:
+echo Build Summary:
 dir /b %BUILD_DIR%\*.tar.gz %BUILD_DIR%\*.zip 2>nul
 
 echo.
-echo ✨ Ready for distribution!
+echo Ready for distribution!
 echo Each archive contains the executable, config, SSH keys, and README
 goto :eof
 
@@ -67,18 +67,18 @@ set arch=%2
 set ext=%3
 set output_name=proxmigrate-%VERSION%-%os%-%arch%%ext%
 
-echo 🔨 Building for %os%/%arch%...
+echo Building for %os%/%arch%...
 
 set GOOS=%os%
 set GOARCH=%arch%
 go build -ldflags="-s -w -X main.Version=%VERSION% -X main.BuildTime=%BUILD_TIME%" -o "%BUILD_DIR%\%output_name%" main.go
 
 if errorlevel 1 (
-    echo ❌ Failed to build for %os%/%arch%
+    echo Failed to build for %os%/%arch%
     goto :eof
 )
 
-echo ✅ Successfully built %output_name%
+echo Successfully built %output_name%
 
 REM Create platform-specific directory
 set platform_dir=%BUILD_DIR%\%os%-%arch%

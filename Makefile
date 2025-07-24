@@ -8,25 +8,25 @@ all: build
 
 # Build for all platforms
 build:
-	@echo "🚀 Building Proxmigrate for all platforms..."
+	@echo "Building Proxmigrate for all platforms..."
 	@./build.sh
 
 # Clean build artifacts
 clean:
-	@echo "🧹 Cleaning build artifacts..."
+	@echo "Cleaning build artifacts..."
 	@rm -rf dist/
 	@rm -f proxmigrate
 
 # Test the application
 test:
-	@echo "🧪 Running tests..."
+	@echo "Running tests..."
 	@go test -v ./...
 
 # Build for current platform only (development)
 dev:
-	@echo "🔨 Building for current platform..."
+	@echo "Building for current platform..."
 	@go build -o proxmigrate main.go
-	@echo "✅ Built proxmigrate for current platform"
+	@echo "Built proxmigrate for current platform"
 
 # Run the application (development)
 run:
@@ -34,22 +34,22 @@ run:
 
 # Format code
 fmt:
-	@echo "🎨 Formatting code..."
+	@echo "Formatting code..."
 	@go fmt ./...
 
 # Lint code
 lint:
-	@echo "🔍 Linting code..."
+	@echo "Linting code..."
 	@golangci-lint run || echo "golangci-lint not installed, skipping..."
 
 # Tidy dependencies
 tidy:
-	@echo "🧹 Tidying Go modules..."
+	@echo "Tidying Go modules..."
 	@go mod tidy
 
 # Install dependencies
 deps:
-	@echo "📦 Installing dependencies..."
+	@echo "Installing dependencies..."
 	@go mod download
 
 # Show help
