@@ -14,6 +14,10 @@ tts.json
 *.json.local
 *.json.secret
 
+# Setup scripts with sensitive operations
+setup-proxmox.sh
+setup-*.sh
+
 # Build artifacts
 dist/
 proxmigrate

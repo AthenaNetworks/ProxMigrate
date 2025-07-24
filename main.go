@@ -28,11 +28,12 @@ var (
 
 // ServerConfig represents a single server configuration
 type ServerConfig struct {
-	Host        string `json:"host"`
-	User        string `json:"user"`
-	TokenID     string `json:"token_id"`
-	TokenSecret string `json:"token_secret"`
-	Insecure    bool   `json:"insecure"`
+	Host          string `json:"host"`
+	User          string `json:"user"`
+	TokenID       string `json:"token_id"`
+	TokenSecret   string `json:"token_secret"`
+	Insecure      bool   `json:"insecure"`
+	BackupStorage string `json:"backup_storage"`
 }
 
 // TargetConfig represents a target server configuration with additional fields
@@ -295,10 +296,12 @@ func copyFileDirectly(sourceClient *ssh.Client, sourcePath string, targetHost, t
 
 var (
 	// Command line flags
-	configFile = flag.String("config", "", "Path to JSON configuration file")
-	sourceName = flag.String("source", "", "Source environment name from config")
-	targetName = flag.String("target", "", "Target environment name from config")
-	vmID       = flag.Int("vmid", 0, "VM ID to migrate")
+	configFile  = flag.String("config", "", "Path to JSON configuration file")
+	sourceName  = flag.String("source", "", "Source environment name from config")
+	targetName  = flag.String("target", "", "Target environment name from config")
+	vmID        = flag.Int("vmid", 0, "VM ID to migrate")
+	testFlag    = flag.Bool("test", false, "Test connectivity to source and target")
+	listFlag    = flag.Bool("list", false, "List all configured hosts with their roles")
 	versionFlag = flag.Bool("version", false, "Show version information")
 )
 
@@ -785,11 +788,6 @@ func getFilePathOnDisk(_ /* ctx */ context.Context, host, _ /* tokenID */, _ /* 
 	storageName := parts[0]
 	relPath := parts[1]
 
-	// Verify this is local storage
-	if storageName != "local" {
-		return "", fmt.Errorf("only local storage is supported, got: %s", storageName)
-	}
-
 	// Extract the VM ID from the filename pattern
 	// The pattern is typically backup/vzdump-qemu-VMID-date.vma.zst
 	filename := filepath.Base(relPath)
@@ -816,7 +814,14 @@ func getFilePathOnDisk(_ /* ctx */ context.Context, host, _ /* tokenID */, _ /* 
 
 	// Use SSH to find the most recent backup file for this VM
 	backupPattern := fmt.Sprintf("vzdump-%s-%s-*.vma.*", vmType, vmID)
-	cmd := fmt.Sprintf("ls -t /var/lib/vz/dump/%s | head -1", backupPattern)
+	// Construct the storage path - for most storages it's mounted under /mnt/pve/STORAGE_NAME
+	var storagePath string
+	if storageName == "local" {
+		storagePath = "/var/lib/vz/dump"
+	} else {
+		storagePath = fmt.Sprintf("/mnt/pve/%s/dump", storageName)
+	}
+	cmd := fmt.Sprintf("ls -t %s/%s | head -1", storagePath, backupPattern)
 
 	fmt.Print("Finding most recent backup...")
 
@@ -833,7 +838,7 @@ func getFilePathOnDisk(_ /* ctx */ context.Context, host, _ /* tokenID */, _ /* 
 	}
 
 	// Construct the full path
-	absPath := filepath.Join("/var/lib/vz/dump", actualFilename)
+	absPath := filepath.Join(storagePath, actualFilename)
 
 	fmt.Println("OK")
 
@@ -1009,51 +1014,6 @@ func loadConfig(configPath string) (*Config, error) {
 	return &config, nil
 }
 
-// saveConfigTemplate saves a template configuration file
-func saveConfigTemplate(configPath string) error {
-	config := Config{
-		Sources: make(map[string]ServerConfig),
-		Targets: make(map[string]TargetConfig),
-	}
-
-	// Add example source configuration
-	config.Sources["prod"] = ServerConfig{
-		Host:        "https://192.168.1.100:8006/",
-		User:        "root@pam",
-		TokenID:     "root@pam!migration-tool",
-		TokenSecret: "your-token-secret-here",
-		Insecure:    true,
-	}
-
-	// Add example target configuration
-	config.Targets["backup"] = TargetConfig{
-		ServerConfig: ServerConfig{
-			Host:        "https://192.168.1.101:8006/",
-			User:        "root@pam",
-			TokenID:     "root@pam!migration-tool",
-			TokenSecret: "your-target-token-secret-here",
-			Insecure:    true,
-		},
-		Node:    "pve-node",
-		Storage: "local",
-	}
-
-	config.SSH.User = "root"
-	config.SSH.KeyPath = "/path/to/your/ssh/key"
-
-	configData, err := json.MarshalIndent(config, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to create config template: %w", err)
-	}
-
-	err = os.WriteFile(configPath, configData, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write config template: %w", err)
-	}
-
-	return nil
-}
-
 // restoreBackup restores a VM from a backup file on the target server using SSH and `qmrestore` command
 func restoreBackup(_ /* ctx */ context.Context, host, _ /* nodeName */ string, vmID int, storage, archivePath, sshUser, sshKeyPath string) (string, error) {
 	// Make sure host doesn't end with a slash
@@ -1180,6 +1140,253 @@ func checkStorageExists(ctx context.Context, host, tokenID, tokenSecret string, 
 	return false, nil
 }
 
+// testAPIConnectivity tests API connectivity to a Proxmox server
+func testAPIConnectivity(config ServerConfig, serverName string) error {
+	fmt.Printf("Testing API connectivity to %s (%s)...\n", serverName, config.Host)
+
+	// Create HTTP client
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: config.Insecure},
+	}
+	client := &http.Client{Transport: tr, Timeout: 10 * time.Second}
+
+	// Test API connection by getting version info
+	req, err := http.NewRequest("GET", config.Host+"api2/json/version", nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+
+	// Add authorization header
+	req.Header.Set("Authorization", fmt.Sprintf("PVEAPIToken=%s=%s", config.TokenID, config.TokenSecret))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	// Parse response to get version info
+	var result struct {
+		Data struct {
+			Version string `json:"version"`
+			Release string `json:"release"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("failed to parse response: %v", err)
+	}
+
+	fmt.Printf("  ✓ API connection successful - Proxmox VE %s-%s\n", result.Data.Version, result.Data.Release)
+	return nil
+}
+
+// testSSHConnectivity tests SSH connectivity to a server
+func testSSHConnectivity(host, sshUser, keyPath, serverName string) error {
+	fmt.Printf("Testing SSH connectivity to %s (%s)...\n", serverName, host)
+
+	// Extract hostname from URL if needed
+	hostname := strings.TrimPrefix(host, "https://")
+	hostname = strings.TrimPrefix(hostname, "http://")
+	hostname = strings.TrimSuffix(hostname, "/")
+	hostname = strings.Split(hostname, ":")[0] // Remove port if present
+
+	// Create SSH client
+	client, err := createSSHClient(hostname, sshUser, keyPath)
+	if err != nil {
+		return fmt.Errorf("failed to connect: %v", err)
+	}
+	defer client.Close()
+
+	// Test SSH by running a simple command
+	session, err := client.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	// Run a simple command to test connectivity
+	output, err := session.CombinedOutput("hostname && pveversion --verbose | head -1")
+	if err != nil {
+		return fmt.Errorf("failed to execute test command: %v", err)
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	hostname_result := "unknown"
+	version_result := "unknown"
+
+	if len(lines) >= 1 {
+		hostname_result = strings.TrimSpace(lines[0])
+	}
+	if len(lines) >= 2 {
+		version_result = strings.TrimSpace(lines[1])
+	}
+
+	fmt.Printf("  ✓ SSH connection successful - %s (%s)\n", hostname_result, version_result)
+	return nil
+}
+
+// listConfiguredHosts lists all configured hosts with their roles
+func listConfiguredHosts(config *Config) {
+	fmt.Println("Configured Proxmox Hosts:")
+	fmt.Println()
+
+	// Create a map to track all unique hosts and their roles
+	hostRoles := make(map[string][]string)
+	hostConfigs := make(map[string]ServerConfig)
+
+	// Add sources
+	for name, sourceConfig := range config.Sources {
+		hostRoles[name] = append(hostRoles[name], "source")
+		hostConfigs[name] = sourceConfig
+	}
+
+	// Add targets
+	for name, targetConfig := range config.Targets {
+		if _, exists := hostRoles[name]; exists {
+			// Host already exists as source, add target role
+			hostRoles[name] = append(hostRoles[name], "target")
+		} else {
+			// New host, add as target only
+			hostRoles[name] = []string{"target"}
+			hostConfigs[name] = targetConfig.ServerConfig
+		}
+	}
+
+	if len(hostRoles) == 0 {
+		fmt.Println("No hosts configured.")
+		return
+	}
+
+	// Sort host names for consistent output
+	hostNames := make([]string, 0, len(hostRoles))
+	for name := range hostRoles {
+		hostNames = append(hostNames, name)
+	}
+	sort.Strings(hostNames)
+
+	// Display hosts with role indicators
+	for _, name := range hostNames {
+		roles := hostRoles[name]
+		config := hostConfigs[name]
+
+		// Create role indicator
+		var roleIndicator string
+		if len(roles) == 2 {
+			// Both source and target
+			roleIndicator = "[source,target]"
+		} else if roles[0] == "source" {
+			roleIndicator = "[source]      "
+		} else {
+			roleIndicator = "[target]      "
+		}
+
+		// Extract hostname from URL for display
+		hostURL := strings.TrimPrefix(config.Host, "https://")
+		hostURL = strings.TrimPrefix(hostURL, "http://")
+		hostURL = strings.TrimSuffix(hostURL, "/")
+
+		fmt.Printf("  %-20s %s %s\n", name, roleIndicator, hostURL)
+	}
+
+	fmt.Println()
+	fmt.Printf("Total hosts: %d\n", len(hostNames))
+
+	// Show summary by role
+	sourceCount := 0
+	targetCount := 0
+	bothCount := 0
+
+	for _, roles := range hostRoles {
+		if len(roles) == 2 {
+			bothCount++
+		} else if roles[0] == "source" {
+			sourceCount++
+		} else {
+			targetCount++
+		}
+	}
+
+	fmt.Printf("Roles: %d source-only, %d target-only, %d both\n", sourceCount, targetCount, bothCount)
+}
+
+// runConnectivityTests runs connectivity tests for source and target
+func runConnectivityTests(config *Config, sourceName, targetName string) {
+	fmt.Println("Running connectivity tests...\n")
+
+	// Get source and target configurations
+	sourceConfig, exists := config.Sources[sourceName]
+	if !exists {
+		fmt.Fprintf(os.Stderr, "Source '%s' not found in configuration\n", sourceName)
+		os.Exit(1)
+	}
+
+	targetConfig, exists := config.Targets[targetName]
+	if !exists {
+		fmt.Fprintf(os.Stderr, "Target '%s' not found in configuration\n", targetName)
+		os.Exit(1)
+	}
+
+	var testsPassed, testsTotal int
+
+	// Test source connectivity
+	fmt.Println("=== Testing Source Server ===")
+	testsTotal += 2
+
+	// Test source API
+	if err := testAPIConnectivity(sourceConfig, sourceName); err != nil {
+		fmt.Printf("  ✗ API test failed: %v\n", err)
+	} else {
+		testsPassed++
+	}
+
+	// Test source SSH
+	if err := testSSHConnectivity(sourceConfig.Host, config.SSH.User, config.SSH.KeyPath, sourceName); err != nil {
+		fmt.Printf("  ✗ SSH test failed: %v\n", err)
+	} else {
+		testsPassed++
+	}
+
+	fmt.Println()
+
+	// Test target connectivity
+	fmt.Println("=== Testing Target Server ===")
+	testsTotal += 2
+
+	// Test target API
+	if err := testAPIConnectivity(targetConfig.ServerConfig, targetName); err != nil {
+		fmt.Printf("  ✗ API test failed: %v\n", err)
+	} else {
+		testsPassed++
+	}
+
+	// Test target SSH
+	if err := testSSHConnectivity(targetConfig.Host, config.SSH.User, config.SSH.KeyPath, targetName); err != nil {
+		fmt.Printf("  ✗ SSH test failed: %v\n", err)
+	} else {
+		testsPassed++
+	}
+
+	fmt.Println()
+
+	// Summary
+	fmt.Printf("=== Test Summary ===\n")
+	fmt.Printf("Tests passed: %d/%d\n", testsPassed, testsTotal)
+
+	if testsPassed == testsTotal {
+		fmt.Println("✓ All connectivity tests passed! Ready for migration.")
+		os.Exit(0)
+	} else {
+		fmt.Println("✗ Some tests failed. Please fix connectivity issues before migration.")
+		os.Exit(1)
+	}
+}
+
 func main() {
 	flag.Parse() // Parse the command-line flags
 
@@ -1187,6 +1394,51 @@ func main() {
 	if *versionFlag {
 		fmt.Printf("Proxmigrate %s\n", Version)
 		fmt.Printf("Built: %s\n", BuildTime)
+		os.Exit(0)
+	}
+
+	// Handle list flag - only requires config file
+	if *listFlag {
+		// Load configuration from file
+		configPath := *configFile
+		if configPath == "" {
+			// Get the directory of the executable
+			execPath, err := os.Executable()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Could not determine executable path: %v\n", err)
+			}
+			execDir := filepath.Dir(execPath)
+
+			// Try default locations (executable dir first, then current dir, then system locations)
+			defaultPaths := []string{
+				filepath.Join(execDir, "config.json"), // config.json in executable directory
+				"./config.json",                       // config.json in current directory
+				"./proxmigrate.json",                  // legacy name in current directory
+				"~/.proxmigrate/config.json",          // user config directory
+				"/etc/proxmigrate/config.json",        // system config directory
+			}
+			for _, path := range defaultPaths {
+				if _, err := os.Stat(path); err == nil {
+					configPath = path
+					break
+				}
+			}
+		}
+
+		if configPath == "" {
+			fmt.Fprintln(os.Stderr, "Error: No configuration file found.")
+			fmt.Fprintln(os.Stderr, "Please create a config.json file or specify --config flag.")
+			os.Exit(1)
+		}
+
+		config, err := loadConfig(configPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading config file: %v\n", err)
+			os.Exit(1)
+		}
+
+		// List configured hosts and exit
+		listConfiguredHosts(config)
 		os.Exit(0)
 	}
 
@@ -1245,10 +1497,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Validate required flags
+	// Handle test flag - only requires source and target, not vmid
+	if *testFlag {
+		if *sourceName == "" || *targetName == "" {
+			fmt.Fprintln(os.Stderr, "Error: --test requires --source and --target flags.")
+			fmt.Fprintln(os.Stderr, "Usage: proxmigrate --test --source=prod --target=backup")
+			os.Exit(1)
+		}
+		// Run connectivity tests and exit
+		runConnectivityTests(config, *sourceName, *targetName)
+		return // This won't be reached due to os.Exit in runConnectivityTests
+	}
+
+	// Validate required flags for migration
 	if *sourceName == "" || *targetName == "" || *vmID == 0 {
 		fmt.Fprintln(os.Stderr, "Error: Missing required flags. --source, --target, and --vmid are mandatory.")
 		fmt.Fprintln(os.Stderr, "Usage: proxmigrate --source=prod --target=backup --vmid=109")
+		fmt.Fprintln(os.Stderr, "       proxmigrate --test --source=prod --target=backup")
 		os.Exit(1)
 	}
 
@@ -1274,34 +1539,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Check if 'local' storage exists on source server
-	fmt.Print("Checking if 'local' storage exists on source server... ")
-	sourceStorageExists, err := checkStorageExists(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, "local")
+	// Check if backup storage exists on source server
+	fmt.Printf("Checking if '%s' storage exists on source server... ", sourceConfig.BackupStorage)
+	sourceStorageExists, err := checkStorageExists(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, sourceConfig.BackupStorage)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error checking source storage: %v\n", err)
 		os.Exit(1)
 	}
 	if !sourceStorageExists {
-		fmt.Fprintln(os.Stderr, "Error: Storage 'local' does not exist on source server. Please create it first.")
+		fmt.Fprintf(os.Stderr, "Error: Storage '%s' does not exist on source server. Please create it first.\n", sourceConfig.BackupStorage)
 		os.Exit(1)
 	}
 	fmt.Println("OK")
 
-	// Check if 'local' storage exists on target server
-	fmt.Print("Checking if 'local' storage exists on target server... ")
-	targetStorageExists, err := checkStorageExists(ctx, targetConfig.Host, targetConfig.TokenID, targetConfig.TokenSecret, targetConfig.Insecure, "local")
+	// Check if backup storage exists on target server
+	fmt.Printf("Checking if '%s' storage exists on target server... ", targetConfig.BackupStorage)
+	targetStorageExists, err := checkStorageExists(ctx, targetConfig.Host, targetConfig.TokenID, targetConfig.TokenSecret, targetConfig.Insecure, targetConfig.BackupStorage)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error checking target storage: %v\n", err)
 		os.Exit(1)
 	}
 	if !targetStorageExists {
-		fmt.Fprintln(os.Stderr, "Error: Storage 'local' does not exist on target server. Please create it first.")
+		fmt.Fprintf(os.Stderr, "Error: Storage '%s' does not exist on target server. Please create it first.\n", targetConfig.BackupStorage)
 		os.Exit(1)
 	}
 	fmt.Println("OK")
-
-	// Use 'local' as the storage (override config if needed)
-	targetConfig.Storage = "local"
 
 	fmt.Println("Source Host:", sourceConfig.Host)
 	fmt.Println("Source VM ID:", *vmID)
@@ -1332,7 +1594,7 @@ func main() {
 	}
 
 	// Initiate the export
-	taskID, err := exportVM(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, sourceNodeName, *vmID, vmType, "local")
+	taskID, err := exportVM(ctx, sourceConfig.Host, sourceConfig.TokenID, sourceConfig.TokenSecret, sourceConfig.Insecure, sourceNodeName, *vmID, vmType, sourceConfig.BackupStorage)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error starting VM export: %v\n", err)
 		os.Exit(1)

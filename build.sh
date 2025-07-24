@@ -13,7 +13,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Get version from git tag or use default
-VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSION=$(git describe --tags --always 2>/dev/null || echo "dev")
 BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 BUILD_DIR="dist"
 
@@ -50,44 +50,8 @@ build_binary() {
         
         # Copy binary to platform directory
         cp "${BUILD_DIR}/${output_name}" "${platform_dir}/proxmigrate${ext}"
-        
-        # Create README for each platform
-        cat > "${platform_dir}/README.md" << EOF
-# Proxmigrate ${VERSION} - ${os}/${arch}
 
-## Quick Start
-
-1. Add the public key to your Proxmox servers:
-   ```bash
-   # Copy the contents of proxmigrate_key.pub to ~/.ssh/authorized_keys on each Proxmox server
-   cat proxmigrate_key.pub
-   ```
-
-2. Update config.json with your server details if needed
-
-3. Run a migration:
-   ```bash
-   ./proxmigrate --source=ara-asp-pxnode1 --target=ara-asp-pve15 --vmid=109
-   ```
-
-## Files Included
-
-- `proxmigrate${ext}` - Main executable
-- `config.json` - Configuration file with server definitions
-- `proxmigrate_key` - Private SSH key for server authentication
-- `proxmigrate_key.pub` - Public SSH key (add to Proxmox servers)
-- `README.md` - This file
-
-## Configuration
-
-The tool automatically finds config.json in the same directory as the executable.
-No need to specify --config flag.
-
-Available servers:
-- Sources/Targets: ara-asp-pve15, ara-asp-pve16, ara-asp-pve17, ara-asp-pve18
-- Sources/Targets: ara-asp-pxnode1, ara-asp-pxnode2, ara-asp-pxnode3, ara-asp-pxnode4
-
-EOF
+        cp config.json.example "${platform_dir}/config.json"
         
         # Set executable permissions on Unix systems
         if [ "${os}" != "windows" ]; then
