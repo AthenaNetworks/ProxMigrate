@@ -52,12 +52,19 @@ build_binary() {
         cp "${BUILD_DIR}/${output_name}" "${platform_dir}/proxmigrate${ext}"
 
         cp config.json.example "${platform_dir}/config.json"
-        
+        cp README.md "${platform_dir}/README.md"
+        if [ -f "proxmigrate_key" ] && [ -f "proxmigrate_key.pub" ]; then
+            cp proxmigrate_key "${platform_dir}/proxmigrate_key"
+            cp proxmigrate_key.pub "${platform_dir}/proxmigrate_key.pub"
+        fi
+
         # Set executable permissions on Unix systems
         if [ "${os}" != "windows" ]; then
             chmod +x "${platform_dir}/proxmigrate${ext}"
-            chmod 600 "${platform_dir}/proxmigrate_key"
-            chmod 644 "${platform_dir}/proxmigrate_key.pub"
+            if [ -f "${platform_dir}/proxmigrate_key" ] && [ -f "${platform_dir}/proxmigrate_key.pub" ]; then
+                chmod 600 "${platform_dir}/proxmigrate_key"
+                chmod 644 "${platform_dir}/proxmigrate_key.pub"
+            fi
         fi
         
         # Create archive

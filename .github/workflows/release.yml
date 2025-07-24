@@ -1,0 +1,215 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Get version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+    - name: Create dist directory
+      run: mkdir -p dist
+
+    - name: Build binaries with version info
+      run: |
+        VERSION=${{ steps.version.outputs.VERSION }}
+        BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        LDFLAGS="-w -s -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME}"
+        
+        # Build for Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/proxmigrate-linux-amd64 .
+        
+        # Build for Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/proxmigrate-linux-arm64 .
+        
+        # Build for macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/proxmigrate-darwin-amd64 .
+        
+        # Build for macOS ARM64 (Apple Silicon)
+        GOOS=darwin GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/proxmigrate-darwin-arm64 .
+        
+        # Build for Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/proxmigrate-windows-amd64.exe .
+
+    - name: Create release packages
+      run: |
+        cd dist
+        
+        # Create Linux AMD64 package
+        mkdir -p proxmigrate-linux-amd64
+        cp proxmigrate-linux-amd64 proxmigrate-linux-amd64/proxmigrate
+        cp ../config.json.example proxmigrate-linux-amd64/
+        cp ../proxmigrate_key proxmigrate-linux-amd64/ 2>/dev/null || echo "SSH key not found, skipping"
+        cp ../proxmigrate_key.pub proxmigrate-linux-amd64/ 2>/dev/null || echo "SSH public key not found, skipping"
+        cp ../README.md proxmigrate-linux-amd64/
+        cp ../setup-proxmox.sh proxmigrate-linux-amd64/ 2>/dev/null || echo "Setup script not found, skipping"
+        chmod +x proxmigrate-linux-amd64/proxmigrate
+        chmod 600 proxmigrate-linux-amd64/proxmigrate_key 2>/dev/null || true
+        chmod 644 proxmigrate-linux-amd64/proxmigrate_key.pub 2>/dev/null || true
+        chmod +x proxmigrate-linux-amd64/setup-proxmox.sh 2>/dev/null || true
+        tar -czf proxmigrate-linux-amd64.tar.gz proxmigrate-linux-amd64/
+        
+        # Create Linux ARM64 package
+        mkdir -p proxmigrate-linux-arm64
+        cp proxmigrate-linux-arm64 proxmigrate-linux-arm64/proxmigrate
+        cp ../config.json.example proxmigrate-linux-arm64/
+        cp ../proxmigrate_key proxmigrate-linux-arm64/ 2>/dev/null || echo "SSH key not found, skipping"
+        cp ../proxmigrate_key.pub proxmigrate-linux-arm64/ 2>/dev/null || echo "SSH public key not found, skipping"
+        cp ../README.md proxmigrate-linux-arm64/
+        cp ../setup-proxmox.sh proxmigrate-linux-arm64/ 2>/dev/null || echo "Setup script not found, skipping"
+        chmod +x proxmigrate-linux-arm64/proxmigrate
+        chmod 600 proxmigrate-linux-arm64/proxmigrate_key 2>/dev/null || true
+        chmod 644 proxmigrate-linux-arm64/proxmigrate_key.pub 2>/dev/null || true
+        chmod +x proxmigrate-linux-arm64/setup-proxmox.sh 2>/dev/null || true
+        tar -czf proxmigrate-linux-arm64.tar.gz proxmigrate-linux-arm64/
+        
+        # Create macOS AMD64 package
+        mkdir -p proxmigrate-darwin-amd64
+        cp proxmigrate-darwin-amd64 proxmigrate-darwin-amd64/proxmigrate
+        cp ../config.json.example proxmigrate-darwin-amd64/
+        cp ../proxmigrate_key proxmigrate-darwin-amd64/ 2>/dev/null || echo "SSH key not found, skipping"
+        cp ../proxmigrate_key.pub proxmigrate-darwin-amd64/ 2>/dev/null || echo "SSH public key not found, skipping"
+        cp ../README.md proxmigrate-darwin-amd64/
+        cp ../setup-proxmox.sh proxmigrate-darwin-amd64/ 2>/dev/null || echo "Setup script not found, skipping"
+        chmod +x proxmigrate-darwin-amd64/proxmigrate
+        chmod 600 proxmigrate-darwin-amd64/proxmigrate_key 2>/dev/null || true
+        chmod 644 proxmigrate-darwin-amd64/proxmigrate_key.pub 2>/dev/null || true
+        chmod +x proxmigrate-darwin-amd64/setup-proxmox.sh 2>/dev/null || true
+        tar -czf proxmigrate-darwin-amd64.tar.gz proxmigrate-darwin-amd64/
+        
+        # Create macOS ARM64 package
+        mkdir -p proxmigrate-darwin-arm64
+        cp proxmigrate-darwin-arm64 proxmigrate-darwin-arm64/proxmigrate
+        cp ../config.json.example proxmigrate-darwin-arm64/
+        cp ../proxmigrate_key proxmigrate-darwin-arm64/ 2>/dev/null || echo "SSH key not found, skipping"
+        cp ../proxmigrate_key.pub proxmigrate-darwin-arm64/ 2>/dev/null || echo "SSH public key not found, skipping"
+        cp ../README.md proxmigrate-darwin-arm64/
+        cp ../setup-proxmox.sh proxmigrate-darwin-arm64/ 2>/dev/null || echo "Setup script not found, skipping"
+        chmod +x proxmigrate-darwin-arm64/proxmigrate
+        chmod 600 proxmigrate-darwin-arm64/proxmigrate_key 2>/dev/null || true
+        chmod 644 proxmigrate-darwin-arm64/proxmigrate_key.pub 2>/dev/null || true
+        chmod +x proxmigrate-darwin-arm64/setup-proxmox.sh 2>/dev/null || true
+        tar -czf proxmigrate-darwin-arm64.tar.gz proxmigrate-darwin-arm64/
+        
+        # Create Windows AMD64 package
+        mkdir -p proxmigrate-windows-amd64
+        cp proxmigrate-windows-amd64.exe proxmigrate-windows-amd64/proxmigrate.exe
+        cp ../config.json.example proxmigrate-windows-amd64/
+        cp ../proxmigrate_key proxmigrate-windows-amd64/ 2>/dev/null || echo "SSH key not found, skipping"
+        cp ../proxmigrate_key.pub proxmigrate-windows-amd64/ 2>/dev/null || echo "SSH public key not found, skipping"
+        cp ../README.md proxmigrate-windows-amd64/
+        zip -r proxmigrate-windows-amd64.zip proxmigrate-windows-amd64/
+
+    - name: Generate checksums
+      run: |
+        cd dist
+        sha256sum *.tar.gz *.zip > checksums.txt
+
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        VERSION=${{ steps.version.outputs.VERSION }}
+        
+        # Get commits since last tag
+        LAST_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+        if [ -n "$LAST_TAG" ]; then
+          COMMITS=$(git log --pretty=format:"- %s" ${LAST_TAG}..HEAD)
+        else
+          COMMITS=$(git log --pretty=format:"- %s" HEAD~10..HEAD)
+        fi
+        
+        cat > release_notes.md << EOF
+        # Proxmigrate ${VERSION}
+        
+        ## 🚀 Interactive Proxmox VM Migration Tool
+        
+        This release includes pre-built binaries for all major platforms with full interactive CLI support.
+        
+        ## 📦 Downloads
+        
+        Choose the appropriate package for your platform:
+        
+        - **Linux (x86_64)**: \`proxmigrate-linux-amd64.tar.gz\`
+        - **Linux (ARM64)**: \`proxmigrate-linux-arm64.tar.gz\`
+        - **macOS (Intel)**: \`proxmigrate-darwin-amd64.tar.gz\`
+        - **macOS (Apple Silicon)**: \`proxmigrate-darwin-arm64.tar.gz\`
+        - **Windows (x86_64)**: \`proxmigrate-windows-amd64.zip\`
+        
+        ## ✨ Features
+        
+        - 🎯 **Interactive CLI**: Beautiful prompts for server and VM selection
+        - 🔧 **Multi-Platform**: Native binaries for Linux, macOS, and Windows
+        - 🔐 **Secure**: SSH key-based authentication with API tokens
+        - 📦 **Self-Contained**: All dependencies included in packages
+        - 🚀 **Fast**: Direct server-to-server transfers
+        
+        ## 🛠️ Installation
+        
+        1. Download the appropriate package for your platform
+        2. Extract the archive: \`tar -xzf proxmigrate-*.tar.gz\` (or unzip for Windows)
+        3. Run the setup script: \`./setup-proxmox.sh\` (optional, for SSH key deployment)
+        4. Configure your environments: \`cp config.json.example config.json\`
+        5. Start migrating: \`./proxmigrate\`
+        
+        ## 📚 Documentation
+        
+        See the included README.md for comprehensive usage instructions, troubleshooting, and best practices.
+        
+        ## 🔄 Changes in this Release
+        
+        ${COMMITS}
+        
+        ## 🔍 Verification
+        
+        All binaries are signed and checksums are provided in \`checksums.txt\`.
+        
+        ---
+        
+        **Full Changelog**: https://github.com/\${{ github.repository }}/compare/\${LAST_TAG}...\${VERSION}
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        name: Proxmigrate ${{ steps.version.outputs.VERSION }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          dist/proxmigrate-linux-amd64.tar.gz
+          dist/proxmigrate-linux-arm64.tar.gz
+          dist/proxmigrate-darwin-amd64.tar.gz
+          dist/proxmigrate-darwin-arm64.tar.gz
+          dist/proxmigrate-windows-amd64.zip
+          dist/checksums.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

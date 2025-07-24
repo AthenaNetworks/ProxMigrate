@@ -21,10 +21,10 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-// Build-time variables (set by build script)
+// Build-time variables (set by GitHub Actions or build script)
 var (
-	Version   = "dev"
-	BuildTime = "unknown"
+	version   = "dev"
+	buildTime = "unknown"
 )
 
 // ServerConfig represents a single server configuration
@@ -1707,8 +1707,8 @@ func main() {
 
 	// Handle version flag
 	if *versionFlag {
-		fmt.Printf("Proxmigrate %s\n", Version)
-		fmt.Printf("Built: %s\n", BuildTime)
+		fmt.Printf("Proxmigrate %s\n", version)
+		fmt.Printf("Built: %s\n", buildTime)
 		os.Exit(0)
 	}
 

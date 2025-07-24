@@ -1,128 +1,132 @@
-# Proxmigrate
+# 🚀 Proxmigrate - Interactive Proxmox VM Migration Tool
 
-A powerful, cross-platform tool for migrating virtual machines between Proxmox VE servers.
+A powerful, user-friendly command-line tool for migrating virtual machines between Proxmox VE servers with beautiful interactive prompts and robust file transfer capabilities.
 
-## Features
+![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
+![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-- 🚀 **Multi-Environment Support**: Configure multiple Proxmox servers as both sources and targets
-- 🔐 **Secure Authentication**: Uses Proxmox API tokens and SSH key authentication
-- 🌐 **Cross-Platform**: Builds for macOS, Linux, and Windows
-- 📦 **Self-Contained**: SSH keys and configuration travel with the binary
-- ⚡ **Fast Transfers**: Direct server-to-server file transfers via SSH/SCP
-- 🔄 **VM Type Support**: Handles both QEMU VMs and LXC containers
-- 🎯 **Simple Usage**: Clean command-line interface with named environments
+## ✨ Features
 
-## Quick Start
+### 🎯 Interactive Experience
+- **Beautiful CLI Prompts**: Interactive server and VM selection with search capabilities
+- **Smart VM Discovery**: Automatically fetches and displays VMs from source servers
+- **Rich VM Display**: Shows VM status (🔴 stopped, 🟢 running), names, types, and nodes
+- **Node-Filtered Selection**: Only shows VMs from the selected source node to prevent errors
+- **Backward Compatible**: Works with both interactive prompts and traditional flags
 
-### 1. Setup Configuration
+### 🔧 Robust Migration
+- **Multi-Environment Support**: Configure multiple source and target Proxmox environments
+- **QEMU & LXC Support**: Migrate both virtual machines and containers
+- **Configurable Storage**: Support for any Proxmox storage type (local, NFS, Ceph, etc.)
+- **Secure Transfers**: SSH-based file transfers with automatic key management
+- **API Authentication**: Uses Proxmox API tokens for secure authentication
+- **Progress Monitoring**: Real-time progress updates during export and import
+
+### 🛠️ Advanced Features
+- **Connectivity Testing**: Built-in connection testing for troubleshooting
+- **Host Discovery**: List all configured environments with their roles
+- **Debug Logging**: Comprehensive debug output for troubleshooting
+- **Cross-Platform**: Builds for Linux, macOS, and Windows
+- **Automatic Cleanup**: Removes temporary files and SSH keys securely
+
+## 📋 Prerequisites
+
+- **Go 1.23+** (for building from source)
+- **SSH Access** to both source and target Proxmox servers
+- **API Tokens** configured on Proxmox servers with appropriate permissions
+- **Network Connectivity** between source and target servers
+- **Storage Space** on target server for VM backups
+
+## 🚀 Quick Start
+
+### 1. Download or Build
+
+**Option A: Download Pre-built Binary**
+```bash
+# Download from releases page (recommended)
+wget https://github.com/your-repo/proxmigrate/releases/latest/download/proxmigrate-linux-amd64.tar.gz
+tar -xzf proxmigrate-linux-amd64.tar.gz
+cd proxmigrate-linux-amd64
+```
+
+**Option B: Build from Source**
+```bash
+git clone https://github.com/your-repo/proxmigrate.git
+cd proxmigrate
+go build -o proxmigrate
+```
+
+### 2. Setup SSH Keys
+
+The tool includes a dedicated SSH key pair (`proxmigrate_key` and `proxmigrate_key.pub`). Deploy the public key to your Proxmox servers:
+
+```bash
+# Use the included setup script (recommended)
+./setup-proxmox.sh
+
+# Or manually copy the key to each server
+ssh-copy-id -i proxmigrate_key.pub root@your-proxmox-server
+```
+
+### 3. Configure Environments
 
 Copy the example configuration and customize it:
 
 ```bash
 cp config.json.example config.json
+# Edit config.json with your server details
 ```
 
-Edit `config.json` and replace `YOUR_TOKEN_SECRET_HERE` with your actual Proxmox API token secrets.
-
-### 2. Generate SSH Keys
-
-Generate SSH keys for server authentication:
+### 4. Test Connectivity
 
 ```bash
-ssh-keygen -t rsa -b 4096 -f ./proxmigrate_key -N "" -C "proxmigrate-tool"
+./proxmigrate --test --source=prod --target=backup
 ```
 
-### 3. Deploy Public Key
-
-Add the public key to all your Proxmox servers:
+### 5. Start Migrating!
 
 ```bash
-# Copy the public key content
-cat proxmigrate_key.pub
+# Interactive mode (recommended for new users)
+./proxmigrate
 
-# On each Proxmox server, add to ~/.ssh/authorized_keys
-echo "ssh-rsa AAAAB3NzaC1yc2E..." >> ~/.ssh/authorized_keys
+# Or use flags for automation
+./proxmigrate --source=prod --target=backup --vmid=100
 ```
 
-### 4. Run Migration
+## ⚙️ Configuration
 
-```bash
-./proxmigrate --source=ara-asp-pxnode1 --target=ara-asp-pve15 --vmid=109
-```
+### Configuration File Structure
 
-## Installation
-
-### Download Pre-built Binaries
-
-Download the latest release for your platform from the [Releases](../../releases) page.
-
-### Build from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/proxmigrate.git
-cd proxmigrate
-
-# Build for all platforms
-./build.sh
-
-# Or build for current platform only
-make dev
-```
-
-## Usage
-
-### Basic Migration
-
-```bash
-proxmigrate --source=SOURCE_NAME --target=TARGET_NAME --vmid=VM_ID
-```
-
-### Available Options
-
-- `--source`: Source environment name from config
-- `--target`: Target environment name from config  
-- `--vmid`: VM ID to migrate
-- `--config`: Path to configuration file (optional, auto-detected)
-- `--version`: Show version information
-
-### Examples
-
-```bash
-# Migrate VM 109 from pxnode1 to pve15
-./proxmigrate --source=ara-asp-pxnode1 --target=ara-asp-pve15 --vmid=109
-
-# Migrate VM 200 from pve16 to pxnode3
-./proxmigrate --source=ara-asp-pve16 --target=ara-asp-pxnode3 --vmid=200
-
-# Show version
-./proxmigrate --version
-```
-
-## Configuration
-
-The tool uses a JSON configuration file that defines your Proxmox environments:
+Create a `config.json` file with your Proxmox environments:
 
 ```json
 {
   "sources": {
-    "ara-asp-pve15": {
-      "host": "https://192.168.228.35:8006/",
-      "user": "root@pam",
-      "token_id": "root@pam!migration-tool",
-      "token_secret": "your-token-secret",
+    "prod-cluster": {
+      "host": "https://pve-prod.company.com:8006",
+      "token_id": "proxmigrate@pve!migration",
+      "token_secret": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+      "backup_storage": "migration",
+      "insecure": false
+    },
+    "dev-cluster": {
+      "host": "https://pve-dev.company.com:8006",
+      "token_id": "proxmigrate@pve!migration",
+      "token_secret": "yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy",
+      "backup_storage": "local",
       "insecure": true
     }
   },
   "targets": {
-    "ara-asp-pve15": {
-      "host": "https://192.168.228.35:8006/",
-      "user": "root@pam", 
-      "token_id": "root@pam!migration-tool",
-      "token_secret": "your-token-secret",
-      "node": "ara-asp-pve15",
-      "storage": "tier1",
-      "insecure": true
+    "backup-cluster": {
+      "host": "https://pve-backup.company.com:8006",
+      "token_id": "proxmigrate@pve!restore",
+      "token_secret": "zzzzzzzz-zzzz-zzzz-zzzz-zzzzzzzzzzzz",
+      "node": "pve-backup-01",
+      "storage": "ceph-tier1",
+      "backup_storage": "migration",
+      "insecure": false
     }
   },
   "ssh": {
@@ -132,131 +136,477 @@ The tool uses a JSON configuration file that defines your Proxmox environments:
 }
 ```
 
-### Configuration Fields
+### Configuration Parameters
 
-#### Sources/Targets
-- `host`: Proxmox server URL with port
-- `user`: Proxmox user (usually `root@pam`)
-- `token_id`: API token ID
-- `token_secret`: API token secret
-- `insecure`: Skip TLS verification (for self-signed certs)
+| Parameter | Description | Required | Default |
+|-----------|-------------|----------|----------|
+| `host` | Proxmox server URL with port | ✅ | - |
+| `token_id` | API token ID (format: `user@realm!tokenname`) | ✅ | - |
+| `token_secret` | API token secret | ✅ | - |
+| `backup_storage` | Storage for VM backups | ✅ | `"local"` |
+| `node` | Target node name (targets only) | ✅ | - |
+| `storage` | Target VM storage (targets only) | ✅ | - |
+| `insecure` | Skip TLS certificate validation | ❌ | `false` |
 
-#### Targets Only
-- `node`: Target Proxmox node name
-- `storage`: Target storage name
+### Storage Types and Paths
 
-#### SSH
-- `user`: SSH user for server connections
-- `key_path`: Path to SSH private key
+Proxmigrate automatically handles different storage types:
 
-## Migration Process
+- **`"local"`**: Uses `/var/lib/vz/dump/`
+- **Other storages**: Uses `/mnt/pve/STORAGE_NAME/dump/`
 
-The tool performs a 4-step migration:
+Examples:
+- `"backup_storage": "local"` → `/var/lib/vz/dump/`
+- `"backup_storage": "migration"` → `/mnt/pve/migration/dump/`
+- `"backup_storage": "nfs-backups"` → `/mnt/pve/nfs-backups/dump/`
 
-1. **Fetch VM Config**: Retrieves VM configuration from source server
-2. **Export VM**: Creates backup using Proxmox vzdump
-3. **Transfer Backup**: Copies backup file via SSH/SCP
-4. **Import VM**: Restores VM on target server with new VMID
-5. **Cleanup**: Removes temporary backup files
+## 🎮 Usage Modes
 
-## Development
+### Interactive Mode (Recommended)
 
-### Build System
+Simply run the tool without flags for a guided experience:
 
 ```bash
-# Build all platforms
-make build
-
-# Development build
-make dev
-
-# Clean build artifacts  
-make clean
-
-# Run tests
-make test
-
-# Format code
-make fmt
-
-# Tidy dependencies
-make tidy
+./proxmigrate
 ```
 
-### Project Structure
+**Interactive Flow:**
+1. 🖥️ **Select Source Server**: Choose from configured sources
+2. 🎯 **Select Target Server**: Choose from configured targets  
+3. 📋 **Select VM**: Browse VMs from the source server with search
+4. ✅ **Confirm Migration**: Review settings before proceeding
+5. 🚀 **Watch Progress**: Monitor the migration in real-time
 
+**Interactive VM Selection Features:**
+- **Rich Display**: `🔴 VM 138: test-migrate-vm [stopped] on pve-node-01`
+- **Search**: Type to filter by VM ID, name, or status
+- **Node Filtering**: Only shows VMs from the selected source server
+- **Status Icons**: 🔴 stopped, 🟢 running, ⏸️ paused, etc.
+
+### Command-Line Mode
+
+For automation and scripting:
+
+```bash
+# Basic migration
+./proxmigrate --source=prod --target=backup --vmid=100
+
+# With custom config file
+./proxmigrate --config=/path/to/config.json --source=prod --target=backup --vmid=100
+
+# Test connectivity
+./proxmigrate --test --source=prod --target=backup
+
+# List configured environments
+./proxmigrate --list
+
+# Show version
+./proxmigrate --version
 ```
-proxmigrate/
-├── main.go              # Main application code
-├── config.json.example  # Configuration template
-├── build.sh            # Unix build script
-├── build.bat           # Windows build script
-├── Makefile            # Build automation
-├── go.mod              # Go module definition
-└── README.md           # This file
+
+### Command-Line Flags
+
+| Flag | Description | Example |
+|------|-------------|----------|
+| `--config` | Path to configuration file | `--config=/etc/proxmigrate.json` |
+| `--source` | Source environment name | `--source=production` |
+| `--target` | Target environment name | `--target=backup-site` |
+| `--vmid` | VM ID to migrate | `--vmid=100` |
+| `--test` | Test connectivity only | `--test` |
+| `--list` | List configured hosts | `--list` |
+| `--version` | Show version information | `--version` |
+
+## 🔄 Migration Process
+
+Proxmigrate performs a comprehensive 4-step migration:
+
+### Step 1: 🔍 Fetch VM Configuration
+- Connects to source Proxmox API
+- Locates the VM across all nodes in the cluster
+- Retrieves complete VM configuration
+- Validates VM exists and is accessible
+
+### Step 2: 📦 Export VM
+- Creates a compressed backup using `vzdump`
+- Supports both QEMU VMs and LXC containers
+- Uses configurable backup storage location
+- Shows real-time progress with transfer rates
+- Handles large VMs efficiently with streaming
+
+### Step 3: 🚚 Transfer Backup
+- Establishes secure SSH connections to both servers
+- Copies SSH key to source server temporarily
+- Performs direct server-to-server transfer via SCP
+- Shows transfer progress with file size and speed
+- Automatically cleans up temporary SSH keys
+
+### Step 4: 📥 Import VM
+- Finds next available VM ID on target server
+- Restores VM using Proxmox restore API
+- Configures VM with target storage settings
+- Shows import progress with detailed status
+- Cleans up backup files after successful import
+
+## 🔧 Advanced Usage
+
+### Multiple Environment Management
+
+Proxmigrate excels at managing multiple Proxmox environments:
+
+```bash
+# List all configured environments
+./proxmigrate --list
 ```
 
-## Requirements
+Output:
+```
+Configured Proxmox Hosts:
 
-- Go 1.19+ (for building from source)
-- Proxmox VE 6.0+ servers
-- SSH access to Proxmox servers
-- API tokens configured on Proxmox servers
+ara-asp-pve15     [source,target]  192.168.228.35:8006
+ara-asp-pve16     [source,target]  192.168.228.36:8006
+ara-asp-pxnode1   [source,target]  192.168.228.50:8006
+ara-asp-pxnode2   [source,target]  192.168.228.51:8006
 
-## Security Notes
+Summary: 4 total hosts (4 sources, 4 targets)
+```
 
-- 🔐 **Never commit SSH keys or config files with secrets to version control**
-- 🛡️ **Use dedicated API tokens with minimal required permissions**
-- 🔒 **Ensure SSH keys have proper permissions (600 for private key)**
-- 🌐 **Consider using proper TLS certificates instead of `insecure: true`**
+### Connectivity Testing
 
-## Troubleshooting
+Before performing migrations, test your setup:
 
-### Common Issues
+```bash
+./proxmigrate --test --source=prod --target=backup
+```
 
-**SSH Connection Failed**
-- Verify SSH key is deployed to all servers
-- Check SSH key permissions (600 for private key)
-- Ensure SSH user has proper access
+Output:
+```
+Testing connectivity to source and target servers...
 
-**API Authentication Failed**
-- Verify API token ID and secret are correct
-- Check token permissions in Proxmox
-- Ensure token is not expired
+Source Server (prod):
+  API Connection: ✓ Connected successfully
+  API Authentication: ✓ Token valid
+  SSH Connection: ✓ Connected successfully
+  Server Version: pve-manager/8.0.3
 
-**Storage Not Found**
-- Verify storage name exists on target server
-- Check storage permissions
-- Ensure storage has sufficient space
+Target Server (backup):
+  API Connection: ✓ Connected successfully
+  API Authentication: ✓ Token valid
+  SSH Connection: ✓ Connected successfully
+  Server Version: pve-manager/8.0.3
+
+✅ All connectivity tests passed!
+```
+
+### Automation and Scripting
+
+Proxmigrate is perfect for automation:
+
+```bash
+#!/bin/bash
+# Automated backup script
+
+VMS=(100 101 102 103)
+SOURCE="production"
+TARGET="backup-site"
+
+for vm in "${VMS[@]}"; do
+    echo "Migrating VM $vm..."
+    ./proxmigrate --source="$SOURCE" --target="$TARGET" --vmid="$vm"
+    if [ $? -eq 0 ]; then
+        echo "✅ VM $vm migrated successfully"
+    else
+        echo "❌ VM $vm migration failed"
+        exit 1
+    fi
+done
+
+echo "🎉 All VMs migrated successfully!"
+```
+
+## 🔐 Security & Best Practices
+
+### API Token Setup
+
+1. **Create dedicated user for migrations:**
+```bash
+# On each Proxmox server
+pveum user add proxmigrate@pve --comment "VM Migration Tool"
+```
+
+2. **Create API tokens with appropriate permissions:**
+```bash
+# Create token
+pveum user token add proxmigrate@pve migration --privsep=0
+
+# Grant necessary permissions
+pveum acl modify / --users proxmigrate@pve --roles Administrator
+```
+
+3. **Use least-privilege principle in production:**
+```bash
+# More restrictive permissions for production
+pveum role add VMigrator --privs "VM.Allocate,VM.Migrate,VM.Monitor,Datastore.Allocate"
+pveum acl modify / --users proxmigrate@pve --roles VMigrator
+```
+
+### SSH Security
+
+- **Use dedicated SSH keys**: The tool includes `proxmigrate_key` specifically for migrations
+- **Restrict SSH access**: Configure SSH to only allow key-based authentication
+- **Regular key rotation**: Regenerate SSH keys periodically
+- **Monitor access**: Review SSH logs for migration activities
+
+### Network Security
+
+- **Firewall rules**: Only allow necessary ports (22 for SSH, 8006 for Proxmox API)
+- **VPN/Private networks**: Use private networks for server-to-server communication
+- **Certificate validation**: Use `"insecure": false` in production environments
+
+## 🐛 Troubleshooting
+
+### Common Issues and Solutions
+
+#### Authentication Problems
+
+**❌ Error: `API token ID and secret are required`**
+```bash
+# Solution: Check your config.json format
+{
+  "sources": {
+    "myserver": {
+      "token_id": "user@realm!tokenname",  # ← Must include @realm!
+      "token_secret": "your-secret-here"
+    }
+  }
+}
+```
+
+**❌ Error: `Permission denied (publickey,password)`**
+```bash
+# Solution: Deploy SSH key properly
+ssh-copy-id -i proxmigrate_key.pub root@your-server
+
+# Or use the setup script
+./setup-proxmox.sh
+```
+
+#### Network Connectivity
+
+**❌ Error: `connection refused`**
+```bash
+# Check if Proxmox API is accessible
+curl -k https://your-server:8006/api2/json/version
+
+# Check SSH connectivity
+ssh -i proxmigrate_key root@your-server
+```
+
+**❌ Error: `certificate verify failed`**
+```json
+// Temporary fix: Add to config.json
+{
+  "sources": {
+    "myserver": {
+      "insecure": true  // ← Only for self-signed certificates
+    }
+  }
+}
+```
+
+#### Storage Issues
+
+**❌ Error: `no backup files found`**
+```bash
+# Check backup storage configuration
+# Ensure backup_storage matches your Proxmox storage name
+{
+  "backup_storage": "migration"  # ← Must match Proxmox storage ID
+}
+```
+
+**❌ Error: `failed to create target directory`**
+```bash
+# Check storage permissions on target server
+ssh root@target-server "ls -la /mnt/pve/migration/"
+
+# Fix permissions if needed
+ssh root@target-server "chown root:root /mnt/pve/migration/dump && chmod 755 /mnt/pve/migration/dump"
+```
+
+#### VM-Specific Issues
+
+**❌ Error: `VM not found`**
+- VM might be on a different node than expected
+- Use interactive mode to see all available VMs
+- Check VM ID is correct: `qm list` on source server
+
+**❌ Error: `insufficient storage space`**
+```bash
+# Check available space on target
+ssh root@target "df -h /var/lib/vz"
+
+# Check VM size before migration
+qm config YOUR_VMID | grep -E "(virtio|scsi|ide).*size"
+```
 
 ### Debug Mode
 
-For verbose output, you can modify the source code to enable debug logging or run with:
+For detailed troubleshooting, the tool provides comprehensive debug output:
 
 ```bash
-# Check configuration loading
-./proxmigrate --source=test --target=test --vmid=999
+# Debug output is automatically shown during transfers
+./proxmigrate --source=prod --target=backup --vmid=100
 ```
 
-## Contributing
+Look for debug lines like:
+```
+DEBUG: Executing SCP command: scp -o StrictHostKeyChecking=no...
+DEBUG: Source path: /mnt/pve/migration/dump/vzdump-qemu-100-...
+DEBUG: Target path: root@192.168.1.100:/mnt/pve/migration/dump/...
+```
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+### Getting Help
 
-## License
+1. **Check connectivity first**: `./proxmigrate --test --source=X --target=Y`
+2. **List environments**: `./proxmigrate --list`
+3. **Review logs**: Check Proxmox logs in `/var/log/pve/`
+4. **Test manually**: Try SSH and API calls manually to isolate issues
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+## 🏗️ Building and Development
 
-## Support
+### Build from Source
 
-For issues and questions:
-- Create an issue on GitHub
-- Check existing issues for solutions
-- Review the troubleshooting section
+```bash
+# Clone repository
+git clone https://github.com/your-repo/proxmigrate.git
+cd proxmigrate
+
+# Install dependencies
+go mod tidy
+
+# Build for current platform
+go build -o proxmigrate
+
+# Build for all platforms
+./build.sh
+```
+
+### Cross-Platform Builds
+
+The included build script creates binaries for all major platforms:
+
+```bash
+./build.sh
+```
+
+Generates:
+- `proxmigrate-linux-amd64.tar.gz`
+- `proxmigrate-linux-arm64.tar.gz`
+- `proxmigrate-darwin-amd64.tar.gz`
+- `proxmigrate-darwin-arm64.tar.gz`
+- `proxmigrate-windows-amd64.zip`
+
+### Development Setup
+
+```bash
+# Install development dependencies
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+# Run tests
+go test ./...
+
+# Run linter
+golangci-lint run
+
+# Format code
+go fmt ./...
+```
+
+## 📚 API Reference
+
+### Configuration Schema
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "sources": {
+      "type": "object",
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "properties": {
+            "host": {"type": "string", "format": "uri"},
+            "token_id": {"type": "string"},
+            "token_secret": {"type": "string"},
+            "backup_storage": {"type": "string", "default": "local"},
+            "insecure": {"type": "boolean", "default": false}
+          },
+          "required": ["host", "token_id", "token_secret"]
+        }
+      }
+    },
+    "targets": {
+      "type": "object",
+      "patternProperties": {
+        ".*": {
+          "type": "object",
+          "properties": {
+            "host": {"type": "string", "format": "uri"},
+            "token_id": {"type": "string"},
+            "token_secret": {"type": "string"},
+            "node": {"type": "string"},
+            "storage": {"type": "string"},
+            "backup_storage": {"type": "string", "default": "local"},
+            "insecure": {"type": "boolean", "default": false}
+          },
+          "required": ["host", "token_id", "token_secret", "node", "storage"]
+        }
+      }
+    },
+    "ssh": {
+      "type": "object",
+      "properties": {
+        "user": {"type": "string", "default": "root"},
+        "key_path": {"type": "string"}
+      },
+      "required": ["key_path"]
+    }
+  },
+  "required": ["sources", "targets", "ssh"]
+}
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our contributing guidelines:
+
+1. **Fork the repository**
+2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
+3. **Make your changes** with tests
+4. **Run the test suite**: `go test ./...`
+5. **Submit a pull request**
+
+### Code Style
+
+- Follow standard Go formatting (`go fmt`)
+- Add comments for exported functions
+- Include tests for new features
+- Update documentation as needed
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [promptui](https://github.com/manifoldco/promptui) - Beautiful interactive prompts
+- [go-proxmox](https://github.com/luthermonson/go-proxmox) - Proxmox API client library
+- Proxmox VE team for the excellent virtualization platform
 
 ---
 
 **Made with ❤️ for the Proxmox community**
+
+*For support, please open an issue on GitHub or check our troubleshooting section above.*
